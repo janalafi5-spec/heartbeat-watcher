@@ -136,9 +136,9 @@ function Index() {
       const amp = h * 0.32;
 
       // Glow trail
-      ctx.shadowColor = "hsl(var(--ecg-line))";
+      ctx.shadowColor = COLORS.line;
       ctx.shadowBlur = 10;
-      ctx.strokeStyle = "hsl(var(--ecg-line))";
+      ctx.strokeStyle = COLORS.line;
       ctx.lineWidth = 1.8;
       ctx.lineJoin = "round";
       ctx.beginPath();
