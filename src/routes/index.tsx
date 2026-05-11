@@ -42,18 +42,24 @@ function Index() {
     const canvas = canvasRef.current!;
     const ctx = canvas.getContext("2d")!;
     const dpr = window.devicePixelRatio || 1;
+    const css = getComputedStyle(document.documentElement);
+    const c = (name: string) => `hsl(${css.getPropertyValue(name).trim()})`;
+    const COLORS = {
+      bg: c("--monitor-bg"),
+      grid: c("--monitor-grid"),
+      gridStrong: c("--monitor-grid-strong"),
+      line: c("--ecg-line"),
+    };
 
     const resize = () => {
       const rect = canvas.getBoundingClientRect();
       canvas.width = rect.width * dpr;
       canvas.height = rect.height * dpr;
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.scale(dpr, dpr);
     };
     resize();
-    window.addEventListener("resize", () => {
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      resize();
-    });
+    window.addEventListener("resize", resize);
 
     const SAMPLE_RATE = 250; // Hz
     const SECONDS_VISIBLE = 6;
