@@ -154,7 +154,7 @@ function Index() {
       // Leading dot
       const leadIdx = (writeIdx - 1 + BUFFER_LEN) % BUFFER_LEN;
       const leadY = midY - data[leadIdx] * amp;
-      ctx.fillStyle = "hsl(var(--ecg-line))";
+      ctx.fillStyle = COLORS.line;
       ctx.beginPath();
       ctx.arc(w - 2, leadY, 3, 0, Math.PI * 2);
       ctx.fill();
