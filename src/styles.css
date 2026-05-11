@@ -19,6 +19,20 @@
  */
 
 @theme inline {
+  --color-ecg-line: hsl(var(--ecg-line));
+  --color-monitor-bg: hsl(var(--monitor-bg));
+  --color-monitor-panel: hsl(var(--monitor-panel));
+  --color-monitor-header: hsl(var(--monitor-header));
+  --color-monitor-border: hsl(var(--monitor-border));
+  --color-monitor-grid: hsl(var(--monitor-grid));
+  --color-vital-bpm: hsl(var(--vital-bpm));
+  --color-vital-spo2: hsl(var(--vital-spo2));
+  --color-vital-resp: hsl(var(--vital-resp));
+  --color-vital-temp: hsl(var(--vital-temp));
+  --color-status-live: hsl(var(--status-live));
+  --color-status-warn: hsl(var(--status-warn));
+  --shadow-monitor: 0 0 0 1px hsl(var(--monitor-border)), 0 20px 60px -20px hsl(0 0% 0% / 0.6);
+  --animate-heartbeat: heartbeat 1s ease-in-out infinite;
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -142,3 +156,34 @@
     color: var(--color-foreground);
   }
 }
+
+/* Hospital ECG monitor theme — force dark, define monitor tokens as HSL triplets */
+:root {
+  --background: oklch(0.16 0.02 240);
+  --foreground: oklch(0.95 0.01 240);
+  --muted-foreground: oklch(0.65 0.02 240);
+  --border: oklch(0.28 0.02 240);
+
+  --ecg-line: 145 100% 55%;
+  --monitor-bg: 220 35% 5%;
+  --monitor-panel: 220 30% 8%;
+  --monitor-header: 220 30% 11%;
+  --monitor-border: 220 20% 18%;
+  --monitor-grid: 145 60% 18% / 0.35;
+  --monitor-grid-strong: 145 60% 28% / 0.45;
+  --vital-bpm: 350 90% 60%;
+  --vital-spo2: 195 95% 60%;
+  --vital-resp: 50 95% 60%;
+  --vital-temp: 25 95% 65%;
+  --status-live: 0 90% 60%;
+  --status-warn: 35 100% 55%;
+}
+
+@keyframes heartbeat {
+  0%, 100% { transform: scale(1); }
+  15% { transform: scale(1.25); }
+  30% { transform: scale(1); }
+  45% { transform: scale(1.15); }
+  60% { transform: scale(1); }
+}
+
