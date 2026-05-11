@@ -75,9 +75,9 @@ function Index() {
     const FILTER_WIN = 7;
 
     const drawGrid = (w: number, h: number) => {
-      ctx.fillStyle = "hsl(var(--monitor-bg))";
+      ctx.fillStyle = COLORS.bg;
       ctx.fillRect(0, 0, w, h);
-      ctx.strokeStyle = "hsl(var(--monitor-grid))";
+      ctx.strokeStyle = COLORS.grid;
       ctx.lineWidth = 0.5;
       const small = 16;
       for (let x = 0; x < w; x += small) {
@@ -86,7 +86,7 @@ function Index() {
       for (let y = 0; y < h; y += small) {
         ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
       }
-      ctx.strokeStyle = "hsl(var(--monitor-grid-strong))";
+      ctx.strokeStyle = COLORS.gridStrong;
       ctx.lineWidth = 0.8;
       for (let x = 0; x < w; x += small * 5) {
         ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
