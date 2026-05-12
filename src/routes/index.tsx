@@ -5,17 +5,17 @@ export const Route = createFileRoute("/")({
   component: Index,
   head: () => ({
     meta: [
-      { title: "ECG Monitor — DSP Signal Processing" },
+      { title: "Heartbeat Watcher — ICU Patient Monitor" },
       {
         name: "description",
         content:
-          "Hospital-style ECG monitor visualizing original, noisy, and DSP-filtered signals for a Digital Signal Processing project.",
+          "Heartbeat Watcher: hospital-style ICU patient monitor demonstrating DSP filtering of noisy ECG signals in real time.",
       },
     ],
   }),
 });
 
-// PQRST approximation via gaussians, t in [0,1)
+// PQRST gaussian approximation, t in [0,1)
 function ecgSample(t: number): number {
   const g = (c: number, w: number, a: number) =>
     a * Math.exp(-Math.pow((t - c) / w, 2));
@@ -28,19 +28,15 @@ function ecgSample(t: number): number {
   );
 }
 
-type TraceKind = "clean" | "noisy" | "filtered";
-
-interface TraceProps {
-  kind: TraceKind;
-  label: string;
-  sub: string;
-  colorVar: string;
-  bpmRef: React.MutableRefObject<number>;
+interface MonitorProps {
+  runningRef: React.MutableRefObject<boolean>;
   noiseRef: React.MutableRefObject<boolean>;
   filterRef: React.MutableRefObject<boolean>;
+  bpmRef: React.MutableRefObject<number>;
+  resetSignal: number;
 }
 
-function EcgTrace({ kind, label, sub, colorVar, bpmRef, noiseRef, filterRef }: TraceProps) {
+function EcgMonitor({ runningRef, noiseRef, filterRef, bpmRef, resetSignal }: MonitorProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -53,7 +49,9 @@ function EcgTrace({ kind, label, sub, colorVar, bpmRef, noiseRef, filterRef }: T
       bg: c("--monitor-bg"),
       grid: c("--monitor-grid"),
       gridStrong: c("--monitor-grid-strong"),
-      line: c(colorVar),
+      clean: c("--ecg-line"),
+      noisy: c("--ecg-noisy"),
+      divider: c("--vital-spo2"),
     };
 
     const resize = () => {
@@ -66,103 +64,121 @@ function EcgTrace({ kind, label, sub, colorVar, bpmRef, noiseRef, filterRef }: T
     resize();
     window.addEventListener("resize", resize);
 
-    const SAMPLE_RATE = 250;
-    const SECONDS_VISIBLE = 5;
-    const BUFFER_LEN = SAMPLE_RATE * SECONDS_VISIBLE;
-    const raw = new Float32Array(BUFFER_LEN);
-    const display = new Float32Array(BUFFER_LEN);
+    const SR = 250;
+    const SECS = 6;
+    const LEN = SR * SECS;
+    const raw = new Float32Array(LEN);
+    const filt = new Float32Array(LEN);
     let writeIdx = 0;
-    let phase = Math.random();
+    let phase = 0;
     let lastTime = performance.now();
-    const FILTER_WIN = 7;
+    const FW = 9;
 
     const drawGrid = (w: number, h: number) => {
       ctx.fillStyle = COLORS.bg;
       ctx.fillRect(0, 0, w, h);
       ctx.strokeStyle = COLORS.grid;
       ctx.lineWidth = 0.5;
-      const small = 14;
-      for (let x = 0; x < w; x += small) {
-        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
-      }
-      for (let y = 0; y < h; y += small) {
-        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
-      }
+      const sm = 16;
+      for (let x = 0; x < w; x += sm) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke(); }
+      for (let y = 0; y < h; y += sm) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); }
       ctx.strokeStyle = COLORS.gridStrong;
-      ctx.lineWidth = 0.8;
-      for (let x = 0; x < w; x += small * 5) {
-        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
-      }
-      for (let y = 0; y < h; y += small * 5) {
-        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
-      }
+      ctx.lineWidth = 0.9;
+      for (let x = 0; x < w; x += sm * 5) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke(); }
+      for (let y = 0; y < h; y += sm * 5) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); }
     };
 
     let raf = 0;
     const loop = (now: number) => {
-      const dt = (now - lastTime) / 1000;
+      const dt = Math.min(0.1, (now - lastTime) / 1000);
       lastTime = now;
-      const beatsPerSec = bpmRef.current / 60;
-      const samplesToAdd = Math.min(BUFFER_LEN, Math.floor(dt * SAMPLE_RATE));
 
-      for (let i = 0; i < samplesToAdd; i++) {
-        phase += beatsPerSec / SAMPLE_RATE;
-        if (phase >= 1) phase -= 1;
-        const clean = ecgSample(phase);
-        let v = clean;
-        const addNoise = kind === "noisy" || (kind === "filtered" && noiseRef.current);
-        if (kind === "clean") {
-          v = clean;
-        } else if (addNoise) {
-          v =
-            clean +
-            (Math.random() - 0.5) * 0.4 +
-            Math.sin(now * 0.06 + i * 0.3) * 0.06 +
-            Math.sin(now * 0.001 * 50) * 0.04;
-        }
-        raw[writeIdx] = v;
-
-        if (kind === "filtered" && filterRef.current) {
-          let sum = 0;
-          for (let k = 0; k < FILTER_WIN; k++) {
-            const idx = (writeIdx - k + BUFFER_LEN) % BUFFER_LEN;
-            sum += raw[idx];
+      if (runningRef.current) {
+        const bps = bpmRef.current / 60;
+        const n = Math.floor(dt * SR);
+        for (let i = 0; i < n; i++) {
+          phase += bps / SR;
+          if (phase >= 1) phase -= 1;
+          const clean = ecgSample(phase);
+          let v = clean;
+          if (noiseRef.current) {
+            v = clean
+              + (Math.random() - 0.5) * 0.55
+              + Math.sin((now + i * 4) * 0.05) * 0.12
+              + Math.sin((now + i * 4) * 0.001 * 50) * 0.08;
           }
-          display[writeIdx] = sum / FILTER_WIN;
-        } else {
-          display[writeIdx] = raw[writeIdx];
+          raw[writeIdx] = v;
+          // 9-tap moving average
+          let s = 0;
+          for (let k = 0; k < FW; k++) {
+            const idx = (writeIdx - k + LEN) % LEN;
+            s += raw[idx];
+          }
+          filt[writeIdx] = s / FW;
+          writeIdx = (writeIdx + 1) % LEN;
         }
-        writeIdx = (writeIdx + 1) % BUFFER_LEN;
       }
 
       const rect = canvas.getBoundingClientRect();
       const w = rect.width, h = rect.height;
       drawGrid(w, h);
 
+      const midX = w / 2;
       const midY = h / 2;
-      const amp = h * 0.32;
+      const amp = h * 0.3;
 
-      ctx.shadowColor = COLORS.line;
+      // Left half: noisy raw
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, 0, midX, h);
+      ctx.clip();
+      ctx.shadowColor = COLORS.noisy;
       ctx.shadowBlur = 8;
-      ctx.strokeStyle = COLORS.line;
+      ctx.strokeStyle = COLORS.noisy;
       ctx.lineWidth = 1.6;
       ctx.lineJoin = "round";
       ctx.beginPath();
       for (let x = 0; x < w; x++) {
         const t = x / w;
-        const idx = (writeIdx + Math.floor(t * BUFFER_LEN)) % BUFFER_LEN;
-        const y = midY - display[idx] * amp;
+        const idx = (writeIdx + Math.floor(t * LEN)) % LEN;
+        const y = midY - raw[idx] * amp;
         if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
       }
       ctx.stroke();
-      ctx.shadowBlur = 0;
+      ctx.restore();
 
-      const leadIdx = (writeIdx - 1 + BUFFER_LEN) % BUFFER_LEN;
-      const leadY = midY - display[leadIdx] * amp;
-      ctx.fillStyle = COLORS.line;
+      // Right half: filtered or raw based on filterRef
+      ctx.save();
       ctx.beginPath();
-      ctx.arc(w - 2, leadY, 3, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.rect(midX, 0, w - midX, h);
+      ctx.clip();
+      const useFilt = filterRef.current;
+      ctx.shadowColor = COLORS.clean;
+      ctx.shadowBlur = useFilt ? 12 : 6;
+      ctx.strokeStyle = useFilt ? COLORS.clean : COLORS.noisy;
+      ctx.lineWidth = 1.8;
+      ctx.lineJoin = "round";
+      ctx.beginPath();
+      for (let x = 0; x < w; x++) {
+        const t = x / w;
+        const idx = (writeIdx + Math.floor(t * LEN)) % LEN;
+        const v = useFilt ? filt[idx] : raw[idx];
+        const y = midY - v * amp;
+        if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      ctx.restore();
+
+      // Center divider — dashed
+      ctx.shadowBlur = 0;
+      ctx.setLineDash([6, 6]);
+      ctx.strokeStyle = COLORS.divider;
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(midX, 0);
+      ctx.lineTo(midX, h);
+      ctx.stroke();
+      ctx.setLineDash([]);
 
       raf = requestAnimationFrame(loop);
     };
@@ -171,208 +187,238 @@ function EcgTrace({ kind, label, sub, colorVar, bpmRef, noiseRef, filterRef }: T
       cancelAnimationFrame(raf);
       window.removeEventListener("resize", resize);
     };
-  }, [kind, colorVar, bpmRef, noiseRef, filterRef]);
+  }, [runningRef, noiseRef, filterRef, bpmRef, resetSignal]);
 
+  return <canvas ref={canvasRef} className="block w-full h-[340px] md:h-[420px]" />;
+}
+
+function Vital({
+  label, value, unit, color, sub,
+}: { label: string; value: string; unit?: string; color: string; sub?: string }) {
   return (
-    <div className="rounded-lg border border-monitor-border bg-monitor-panel overflow-hidden shadow-monitor transition-all hover:border-foreground/30">
-      <div className="flex items-center justify-between px-4 py-2 border-b border-monitor-border bg-monitor-header">
-        <span
-          className="font-mono text-xs tracking-widest"
-          style={{ color: `hsl(var(${colorVar}))` }}
-        >
-          {label}
-        </span>
-        <span className="font-mono text-[10px] text-muted-foreground">{sub}</span>
+    <div className="rounded-md border border-monitor-border bg-monitor-panel p-3">
+      <div className="flex items-center justify-between">
+        <span className="font-mono text-[10px] tracking-widest" style={{ color: `hsl(var(${color}))` }}>{label}</span>
+        {sub && <span className="font-mono text-[9px] text-muted-foreground">{sub}</span>}
       </div>
-      <canvas ref={canvasRef} className="block w-full h-[180px] md:h-[200px]" />
+      <div
+        className="font-mono font-bold tabular-nums leading-none mt-1"
+        style={{ color: `hsl(var(${color}))`, fontSize: "2.6rem", textShadow: `0 0 18px hsl(var(${color}) / 0.5)` }}
+      >
+        {value}
+      </div>
+      {unit && <div className="font-mono text-[10px] text-muted-foreground mt-0.5">{unit}</div>}
     </div>
   );
 }
 
+function useClock() {
+  const [t, setT] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setT(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  return t;
+}
+
 function Index() {
-  const [bpm, setBpm] = useState(72);
+  const [running, setRunning] = useState(true);
   const [noise, setNoise] = useState(false);
   const [filter, setFilter] = useState(false);
+  const [bpm] = useState(80);
+  const [resetSignal, setResetSignal] = useState(0);
+
+  const runningRef = useRef(true);
   const noiseRef = useRef(false);
   const filterRef = useRef(false);
-  const bpmRef = useRef(72);
-
+  const bpmRef = useRef(80);
+  useEffect(() => { runningRef.current = running; }, [running]);
   useEffect(() => { noiseRef.current = noise; }, [noise]);
   useEffect(() => { filterRef.current = filter; }, [filter]);
   useEffect(() => { bpmRef.current = bpm; }, [bpm]);
 
+  const clock = useClock();
   const beatDuration = 60 / bpm;
 
-  const status = !noise
-    ? { text: "PATIENT STABLE · SINUS RHYTHM", tone: "text-ecg-line", dot: "bg-ecg-line" }
-    : filter
-    ? { text: "FILTERING ACTIVE · SIGNAL RECOVERED", tone: "text-vital-spo2", dot: "bg-vital-spo2" }
-    : { text: "SIGNAL DEGRADED · NOISE DETECTED", tone: "text-status-warn", dot: "bg-status-warn" };
+  const leftLabel = noise ? "SIGNAL CORRUPTED" : "NOISY ECG · RAW SIGNAL";
+  const rightLabel = filter ? "DSP FILTER ON · CLEAN" : "DSP FILTERED ECG · CLEAN SIGNAL";
+  const dspStatus = filter ? "DSP FILTER ON" : noise ? "SIGNAL CORRUPTED" : "STABLE";
+
+  const reset = () => {
+    setNoise(false);
+    setFilter(false);
+    setRunning(true);
+    setResetSignal((n) => n + 1);
+  };
+
+  const Btn = ({
+    label, onClick, active, tone = "default",
+  }: { label: string; onClick: () => void; active?: boolean; tone?: "default" | "go" | "stop" | "warn" | "ok" }) => {
+    const tones: Record<string, string> = {
+      default: "border-monitor-border text-foreground/90 hover:border-foreground/40",
+      go: "border-ecg-line/60 text-ecg-line hover:bg-ecg-line/10",
+      stop: "border-vital-bp/60 text-vital-bp hover:bg-vital-bp/10",
+      warn: "border-status-warn/60 text-status-warn hover:bg-status-warn/10",
+      ok: "border-vital-spo2/60 text-vital-spo2 hover:bg-vital-spo2/10",
+    };
+    const activeStyle =
+      active
+        ? tone === "warn"
+          ? "bg-status-warn/20 shadow-[0_0_18px_hsl(var(--status-warn)/0.45)]"
+          : tone === "ok"
+          ? "bg-vital-spo2/20 shadow-[0_0_18px_hsl(var(--vital-spo2)/0.45)]"
+          : "bg-foreground/10"
+        : "";
+    return (
+      <button
+        onClick={onClick}
+        className={`font-mono text-xs tracking-widest px-4 py-2.5 rounded border bg-monitor-panel transition-all duration-200 ${tones[tone]} ${activeStyle}`}
+      >
+        {label}
+      </button>
+    );
+  };
 
   return (
-    <main className="min-h-screen bg-background text-foreground p-4 md:p-8">
-      <div className="mx-auto max-w-7xl">
-        <header className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-6">
+    <main className="min-h-screen bg-background text-foreground p-3 md:p-5">
+      <div className="mx-auto max-w-[1500px]">
+        {/* Top bar */}
+        <header className="rounded-lg border border-monitor-border bg-monitor-header px-4 py-2.5 mb-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="h-2.5 w-2.5 rounded-full bg-status-live animate-pulse" />
-            <h1 className="text-lg md:text-xl font-mono tracking-widest text-muted-foreground">
-              VITAL SIGNS · ECG LEAD II · DSP LAB
-            </h1>
+            <span className="h-2.5 w-2.5 rounded-full bg-status-live animate-pulse" />
+            <div>
+              <h1 className="font-mono text-base md:text-lg font-bold tracking-[0.25em] text-ecg-line">
+                HEARTBEAT WATCHER
+              </h1>
+              <div className="font-mono text-[10px] tracking-widest text-muted-foreground">
+                PATIENT MONITORING SYSTEM
+              </div>
+            </div>
           </div>
-          <div className="font-mono text-xs md:text-sm text-muted-foreground">
-            BED 04 · ROOM 217 · {new Date().toLocaleDateString()}
+          <div className="flex items-center gap-4 font-mono text-xs text-muted-foreground">
+            <span className="hidden sm:inline">{clock.toLocaleDateString()}</span>
+            <span className="text-foreground tabular-nums text-sm">{clock.toLocaleTimeString()}</span>
+            {/* Sound icon */}
+            <svg viewBox="0 0 24 24" className="h-4 w-4 text-vital-spo2" fill="currentColor">
+              <path d="M3 10v4h4l5 4V6L7 10H3zm13.5 2a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4z" />
+            </svg>
+            {/* Battery */}
+            <div className="flex items-center gap-1">
+              <div className="relative h-3 w-7 border border-foreground/60 rounded-sm">
+                <div className="absolute left-0 top-0 bottom-0 w-[80%] bg-ecg-line" />
+              </div>
+              <div className="h-1.5 w-0.5 bg-foreground/60" />
+              <span className="text-[10px]">80%</span>
+            </div>
           </div>
         </header>
 
-        {/* Top bar: BPM + status + controls */}
-        <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr_auto] gap-4 mb-4">
-          <div className="rounded-lg border border-monitor-border bg-monitor-panel p-5 shadow-monitor">
-            <div className="flex items-center justify-between">
-              <span className="font-mono text-xs tracking-widest text-vital-bpm">HR · bpm</span>
-              <svg
-                viewBox="0 0 24 24"
-                className="h-5 w-5 text-vital-bpm"
-                style={{ animation: `heartbeat ${beatDuration}s ease-in-out infinite` }}
-                fill="currentColor"
+        {/* Patient info strip */}
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-3">
+          {[
+            { k: "PATIENT ID", v: "P-1001" },
+            { k: "NAME", v: "John Doe" },
+            { k: "AGE / GENDER", v: "45 / Male" },
+            { k: "BED", v: "ICU-07" },
+            { k: "STATUS", v: dspStatus },
+          ].map((p) => (
+            <div key={p.k} className="rounded-md border border-monitor-border bg-monitor-panel px-3 py-2">
+              <div className="font-mono text-[9px] tracking-widest text-muted-foreground">{p.k}</div>
+              <div
+                className={`font-mono text-sm font-semibold ${
+                  p.k === "STATUS"
+                    ? filter
+                      ? "text-ecg-line"
+                      : noise
+                      ? "text-vital-bp"
+                      : "text-vital-spo2"
+                    : "text-foreground"
+                }`}
               >
-                <path d="M12 21s-7-4.35-7-10a4 4 0 0 1 7-2.65A4 4 0 0 1 19 11c0 5.65-7 10-7 10z" />
-              </svg>
-            </div>
-            <div
-              className="font-mono text-6xl font-bold text-vital-bpm mt-1 tabular-nums"
-              style={{ textShadow: "0 0 24px hsl(var(--vital-bpm) / 0.5)" }}
-            >
-              {bpm}
-            </div>
-            <input
-              type="range"
-              min={40}
-              max={180}
-              value={bpm}
-              onChange={(e) => setBpm(parseInt(e.target.value))}
-              className="w-full mt-3 accent-vital-bpm"
-            />
-          </div>
-
-          <div className="rounded-lg border border-monitor-border bg-monitor-panel p-5 shadow-monitor flex flex-col justify-center">
-            <div className="flex items-center gap-2 mb-2">
-              <span className={`h-2 w-2 rounded-full ${status.dot} animate-pulse`} />
-              <span className="font-mono text-[10px] tracking-widest text-muted-foreground">PATIENT STATUS</span>
-            </div>
-            <div className={`font-mono text-lg md:text-2xl tracking-wider ${status.tone} transition-colors duration-500`}>
-              {status.text}
-            </div>
-            <div className="grid grid-cols-3 gap-4 mt-4 pt-4 border-t border-monitor-border">
-              <div>
-                <div className="font-mono text-[10px] tracking-widest text-vital-spo2">SpO₂</div>
-                <div className="font-mono text-2xl font-bold text-vital-spo2 tabular-nums">98<span className="text-xs text-muted-foreground ml-1">%</span></div>
-              </div>
-              <div>
-                <div className="font-mono text-[10px] tracking-widest text-vital-resp">RESP</div>
-                <div className="font-mono text-2xl font-bold text-vital-resp tabular-nums">16<span className="text-xs text-muted-foreground ml-1">/min</span></div>
-              </div>
-              <div>
-                <div className="font-mono text-[10px] tracking-widest text-vital-temp">TEMP</div>
-                <div className="font-mono text-2xl font-bold text-vital-temp tabular-nums">36.8<span className="text-xs text-muted-foreground ml-1">°C</span></div>
+                {p.v}
               </div>
             </div>
-          </div>
-
-          <div className="rounded-lg border border-monitor-border bg-monitor-panel p-4 shadow-monitor flex flex-col gap-2 justify-center min-w-[220px]">
-            <button
-              onClick={() => setNoise((v) => !v)}
-              className={`w-full font-mono text-xs tracking-widest py-3 rounded border transition-all duration-300 ${
-                noise
-                  ? "bg-status-warn/20 border-status-warn text-status-warn shadow-[0_0_16px_hsl(var(--status-warn)/0.4)]"
-                  : "bg-transparent border-monitor-border text-muted-foreground hover:text-foreground hover:border-foreground/40"
-              }`}
-            >
-              {noise ? "■ NOISE: ACTIVE" : "+ ADD NOISE"}
-            </button>
-            <button
-              onClick={() => setFilter((v) => !v)}
-              className={`w-full font-mono text-xs tracking-widest py-3 rounded border transition-all duration-300 ${
-                filter
-                  ? "bg-ecg-line/15 border-ecg-line text-ecg-line shadow-[0_0_16px_hsl(var(--ecg-line)/0.4)]"
-                  : "bg-transparent border-monitor-border text-muted-foreground hover:text-foreground hover:border-foreground/40"
-              }`}
-            >
-              {filter ? "✓ DSP FILTER: ON" : "≈ APPLY DSP FILTER"}
-            </button>
-          </div>
+          ))}
         </div>
 
-        {/* Three traces */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          <EcgTrace
-            kind="clean"
-            label="① ORIGINAL ECG"
-            sub="reference signal"
-            colorVar="--ecg-line"
-            bpmRef={bpmRef}
-            noiseRef={noiseRef}
-            filterRef={filterRef}
-          />
-          <EcgTrace
-            kind="noisy"
-            label="② NOISY ECG"
-            sub="signal + interference"
-            colorVar="--status-warn"
-            bpmRef={bpmRef}
-            noiseRef={noiseRef}
-            filterRef={filterRef}
-          />
-          <EcgTrace
-            kind="filtered"
-            label="③ DSP FILTERED ECG"
-            sub={filter ? "7-tap moving average" : "filter bypassed"}
-            colorVar="--vital-spo2"
-            bpmRef={bpmRef}
-            noiseRef={noiseRef}
-            filterRef={filterRef}
-          />
-        </div>
-
-        {/* DSP Explanation cards */}
-        <section>
-          <h2 className="font-mono text-xs tracking-widest text-muted-foreground mb-3">
-            ▍ HOW DSP REMOVES ECG NOISE
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {[
-              {
-                t: "1 · Acquire & Sample",
-                c: "ecg-line",
-                d: "The analog ECG from electrodes is sampled at a fixed rate (here 250 Hz). Each sample becomes a discrete value the processor can analyze in the digital domain.",
-              },
-              {
-                t: "2 · Identify Noise",
-                c: "status-warn",
-                d: "Real ECGs are corrupted by 50/60 Hz powerline hum, muscle (EMG) activity and baseline wander. These artifacts overlap the signal and obscure the QRS complex.",
-              },
-              {
-                t: "3 · Filter Digitally",
-                c: "vital-spo2",
-                d: "A digital low-pass filter — here a 7-tap moving average (FIR) — averages neighboring samples to suppress high-frequency noise while preserving the heartbeat morphology.",
-              },
-            ].map((card) => (
-              <article
-                key={card.t}
-                className="rounded-lg border border-monitor-border bg-monitor-panel p-5 shadow-monitor transition-all hover:border-foreground/30 hover:-translate-y-0.5 duration-300"
-              >
-                <div
-                  className="font-mono text-sm tracking-widest mb-2"
-                  style={{ color: `hsl(var(--${card.c}))` }}
-                >
-                  {card.t}
+        {/* Main grid: ECG + vitals */}
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-3 mb-3">
+          {/* ECG card */}
+          <div className="rounded-lg border border-monitor-border bg-monitor-panel shadow-monitor overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-2 border-b border-monitor-border bg-monitor-header">
+              <div className="flex items-center gap-2">
+                <svg viewBox="0 0 24 24" className="h-5 w-5 text-vital-bpm" fill="currentColor"
+                  style={{ animation: `heartbeat ${beatDuration}s ease-in-out infinite` }}>
+                  <path d="M12 21s-7-4.35-7-10a4 4 0 0 1 7-2.65A4 4 0 0 1 19 11c0 5.65-7 10-7 10z" />
+                </svg>
+                <span className="font-mono text-xs tracking-widest text-muted-foreground">ECG · LEAD II · 25 mm/s</span>
+              </div>
+              <span className="font-mono text-[10px] tracking-widest text-muted-foreground">
+                {running ? "● LIVE" : "■ PAUSED"}
+              </span>
+            </div>
+            <div className="relative">
+              <EcgMonitor
+                runningRef={runningRef}
+                noiseRef={noiseRef}
+                filterRef={filterRef}
+                bpmRef={bpmRef}
+                resetSignal={resetSignal}
+              />
+              {/* Half labels overlay */}
+              <div className="pointer-events-none absolute inset-0 flex">
+                <div className="w-1/2 p-3">
+                  <span className="inline-block font-mono text-[10px] tracking-widest px-2 py-1 rounded bg-vital-bp/20 text-vital-bp border border-vital-bp/40">
+                    {leftLabel}
+                  </span>
                 </div>
-                <p className="text-sm text-muted-foreground leading-relaxed">{card.d}</p>
-              </article>
-            ))}
+                <div className="w-1/2 p-3 flex justify-end">
+                  <span className="inline-block font-mono text-[10px] tracking-widest px-2 py-1 rounded bg-ecg-line/20 text-ecg-line border border-ecg-line/40">
+                    {rightLabel}
+                  </span>
+                </div>
+              </div>
+            </div>
           </div>
-          <p className="font-mono text-[10px] text-muted-foreground mt-4 text-center">
-            Educational simulation · not for clinical use
+
+          {/* Vitals column */}
+          <div className="grid grid-cols-2 lg:grid-cols-1 gap-2">
+            <Vital label="ECG" value="80" unit="bpm" color="--vital-bpm" sub="HR" />
+            <Vital label="RESP" value="14" unit="rpm" color="--vital-resp" />
+            <Vital label="SpO₂" value="99" unit="%" color="--vital-spo2" />
+            <Vital label="CO₂" value="38" unit="mmHg" color="--vital-co2" sub="EtCO₂" />
+            <Vital label="ABP" value="120/80" unit="mmHg" color="--vital-bp" sub="ART" />
+            <Vital label="NIBP" value="120/80" unit="mmHg" color="--vital-nibp" />
+          </div>
+        </div>
+
+        {/* Controls */}
+        <div className="rounded-lg border border-monitor-border bg-monitor-panel p-3 mb-3 flex flex-wrap gap-2 justify-center">
+          <Btn label="▶ START" onClick={() => setRunning(true)} active={running} tone="go" />
+          <Btn label="■ STOP" onClick={() => setRunning(false)} active={!running} tone="stop" />
+          <Btn label={noise ? "✕ NOISE: ON" : "+ ADD NOISE"} onClick={() => setNoise((v) => !v)} active={noise} tone="warn" />
+          <Btn label={filter ? "✓ DSP FILTER: ON" : "≈ APPLY DSP FILTER"} onClick={() => setFilter((v) => !v)} active={filter} tone="ok" />
+          <Btn label="↺ RESET" onClick={reset} />
+          <Btn label="⚙ SETTINGS" onClick={() => {}} />
+        </div>
+
+        {/* Explanation */}
+        <section className="rounded-lg border border-monitor-border bg-monitor-panel p-4">
+          <div className="font-mono text-[11px] tracking-widest text-vital-spo2 mb-2">
+            ▍ DIGITAL SIGNAL PROCESSING — ECG NOISE REMOVAL
+          </div>
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            Digital Signal Processing removes unwanted ECG noise such as motion artifacts,
+            muscle (EMG) noise, and 50/60 Hz power-line interference. The{" "}
+            <span className="text-vital-bp font-semibold">left side</span> shows the raw noisy
+            ECG signal acquired directly from the electrodes, while the{" "}
+            <span className="text-ecg-line font-semibold">right side</span> shows the filtered
+            clean signal after DSP processing using a 9-tap moving-average FIR filter that
+            preserves the QRS morphology while attenuating high-frequency noise.
           </p>
+          <div className="mt-3 font-mono text-[10px] text-muted-foreground text-center">
+            Educational simulation · Heartbeat Watcher · Not for clinical use
+          </div>
         </section>
       </div>
     </main>
