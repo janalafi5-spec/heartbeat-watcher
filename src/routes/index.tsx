@@ -225,7 +225,7 @@ function Index() {
   const [running, setRunning] = useState(true);
   const [noise, setNoise] = useState(false);
   const [filter, setFilter] = useState(false);
-  const [bpm] = useState(80);
+  const [bpm, setBpm] = useState(80);
   const [resetSignal, setResetSignal] = useState(0);
 
   const runningRef = useRef(true);
@@ -383,7 +383,7 @@ function Index() {
 
           {/* Vitals column */}
           <div className="grid grid-cols-2 lg:grid-cols-1 gap-2">
-            <Vital label="ECG" value="80" unit="bpm" color="--vital-bpm" sub="HR" />
+            <Vital label="ECG" value={String(bpm)} unit="bpm" color="--vital-bpm" sub="HR" />
             <Vital label="RESP" value="14" unit="rpm" color="--vital-resp" />
             <Vital label="SpO₂" value="99" unit="%" color="--vital-spo2" />
             <Vital label="CO₂" value="38" unit="mmHg" color="--vital-co2" sub="EtCO₂" />
@@ -400,6 +400,33 @@ function Index() {
           <Btn label={filter ? "✓ DSP FILTER: ON" : "≈ APPLY DSP FILTER"} onClick={() => setFilter((v) => !v)} active={filter} tone="ok" />
           <Btn label="↺ RESET" onClick={reset} />
           <Btn label="⚙ SETTINGS" onClick={() => {}} />
+        </div>
+
+        {/* Heart rate slider */}
+        <div className="rounded-lg border border-monitor-border bg-monitor-panel p-4 mb-3">
+          <div className="flex items-center justify-between mb-2">
+            <span className="font-mono text-[11px] tracking-widest text-vital-bpm">
+              ▍ HEART RATE CONTROL
+            </span>
+            <span className="font-mono text-xs text-muted-foreground">
+              <span className="text-vital-bpm font-bold tabular-nums text-base">{bpm}</span> bpm
+            </span>
+          </div>
+          <input
+            type="range"
+            min={30}
+            max={200}
+            step={1}
+            value={bpm}
+            onChange={(e) => setBpm(Number(e.target.value))}
+            className="w-full accent-vital-bpm cursor-pointer"
+            aria-label="Heart rate"
+          />
+          <div className="flex justify-between font-mono text-[9px] text-muted-foreground mt-1 tracking-widest">
+            <span>30 · BRADY</span>
+            <span>60–100 · NORMAL</span>
+            <span>200 · TACHY</span>
+          </div>
         </div>
 
         {/* Explanation */}
