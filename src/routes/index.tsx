@@ -402,6 +402,33 @@ function Index() {
           <Btn label="⚙ SETTINGS" onClick={() => {}} />
         </div>
 
+        {/* Heart rate slider */}
+        <div className="rounded-lg border border-monitor-border bg-monitor-panel p-4 mb-3">
+          <div className="flex items-center justify-between mb-2">
+            <span className="font-mono text-[11px] tracking-widest text-vital-bpm">
+              ▍ HEART RATE CONTROL
+            </span>
+            <span className="font-mono text-xs text-muted-foreground">
+              <span className="text-vital-bpm font-bold tabular-nums text-base">{bpm}</span> bpm
+            </span>
+          </div>
+          <input
+            type="range"
+            min={30}
+            max={200}
+            step={1}
+            value={bpm}
+            onChange={(e) => setBpm(Number(e.target.value))}
+            className="w-full accent-vital-bpm cursor-pointer"
+            aria-label="Heart rate"
+          />
+          <div className="flex justify-between font-mono text-[9px] text-muted-foreground mt-1 tracking-widest">
+            <span>30 · BRADY</span>
+            <span>60–100 · NORMAL</span>
+            <span>200 · TACHY</span>
+          </div>
+        </div>
+
         {/* Explanation */}
         <section className="rounded-lg border border-monitor-border bg-monitor-panel p-4">
           <div className="font-mono text-[11px] tracking-widest text-vital-spo2 mb-2">
