@@ -164,19 +164,30 @@
   --muted-foreground: oklch(0.65 0.02 240);
   --border: oklch(0.28 0.02 240);
 
-  --ecg-line: 145 100% 55%;
-  --monitor-bg: 220 35% 5%;
-  --monitor-panel: 220 30% 8%;
-  --monitor-header: 220 30% 11%;
-  --monitor-border: 220 20% 18%;
-  --monitor-grid: 145 60% 18% / 0.35;
-  --monitor-grid-strong: 145 60% 28% / 0.45;
-  --vital-bpm: 350 90% 60%;
-  --vital-spo2: 195 95% 60%;
-  --vital-resp: 50 95% 60%;
+  --ecg-line: 135 100% 55%;
+  --ecg-noisy: 0 90% 60%;
+  --monitor-bg: 215 60% 4%;
+  --monitor-panel: 215 45% 7%;
+  --monitor-header: 215 40% 10%;
+  --monitor-border: 210 35% 18%;
+  --monitor-grid: 210 90% 50% / 0.18;
+  --monitor-grid-strong: 210 90% 55% / 0.32;
+  --vital-bpm: 135 100% 55%;
+  --vital-spo2: 185 100% 60%;
+  --vital-resp: 50 100% 60%;
   --vital-temp: 25 95% 65%;
+  --vital-co2: 285 90% 70%;
+  --vital-bp: 0 90% 60%;
+  --vital-nibp: 0 0% 100%;
   --status-live: 0 90% 60%;
   --status-warn: 35 100% 55%;
+}
+
+@theme inline {
+  --color-ecg-noisy: hsl(var(--ecg-noisy));
+  --color-vital-co2: hsl(var(--vital-co2));
+  --color-vital-bp: hsl(var(--vital-bp));
+  --color-vital-nibp: hsl(var(--vital-nibp));
 }
 
 @keyframes heartbeat {
