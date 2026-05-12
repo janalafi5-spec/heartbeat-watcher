@@ -161,7 +161,7 @@ function EcgMonitor({ runningRef, noiseRef, filterRef, bpmRef, resetSignal }: Mo
       ctx.beginPath();
       for (let x = 0; x < w; x++) {
         const t = x / w;
-        const idx = (writeIdx + Math.floor(t * LEN)) % LEN;
+        const idx = (writeIdx - 1 - Math.floor(t * LEN) + LEN) % LEN;
         const v = useFilt ? filt[idx] : raw[idx];
         const y = midY - v * amp;
         if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
