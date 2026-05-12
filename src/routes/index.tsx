@@ -225,7 +225,7 @@ function Index() {
   const [running, setRunning] = useState(true);
   const [noise, setNoise] = useState(false);
   const [filter, setFilter] = useState(false);
-  const [bpm] = useState(80);
+  const [bpm, setBpm] = useState(80);
   const [resetSignal, setResetSignal] = useState(0);
 
   const runningRef = useRef(true);
