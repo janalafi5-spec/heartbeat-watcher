@@ -383,7 +383,7 @@ function Index() {
 
           {/* Vitals column */}
           <div className="grid grid-cols-2 lg:grid-cols-1 gap-2">
-            <Vital label="ECG" value="80" unit="bpm" color="--vital-bpm" sub="HR" />
+            <Vital label="ECG" value={String(bpm)} unit="bpm" color="--vital-bpm" sub="HR" />
             <Vital label="RESP" value="14" unit="rpm" color="--vital-resp" />
             <Vital label="SpO₂" value="99" unit="%" color="--vital-spo2" />
             <Vital label="CO₂" value="38" unit="mmHg" color="--vital-co2" sub="EtCO₂" />
